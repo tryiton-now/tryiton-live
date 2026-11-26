@@ -1,0 +1,47 @@
+{
+  "name": "tryiton-live",
+  "version": "0.1.0",
+  "description": "Browser SDK for TryItOn live (real-time webcam) virtual try-on.",
+  "keywords": [
+    "tryiton",
+    "virtual-try-on",
+    "live",
+    "webrtc",
+    "fashion",
+    "sdk"
+  ],
+  "homepage": "https://docs.tryiton.now",
+  "license": "MIT",
+  "author": "TryItOn",
+  "type": "module",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "src",
+    "scripts",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean --platform browser",
+    "build:demo": "esbuild src/index.ts --bundle --format=esm --platform=browser --minify --outfile=examples/basic/vendor/tryiton-live.js && node scripts/copy-media-worker.mjs examples/basic/vendor",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@decartai/sdk": "0.2.8"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^3.2.0"
+  }
+}

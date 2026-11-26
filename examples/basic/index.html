@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TryItOn live try-on demo</title>
+    <style>
+      body { font: 15px/1.4 system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+      video { width: 100%; aspect-ratio: 16 / 9; background: #111; border-radius: 8px; transform: scaleX(-1); }
+      input { width: 100%; padding: .5rem; box-sizing: border-box; }
+      button { padding: .5rem 1rem; margin: .5rem .5rem 0 0; }
+      #log { white-space: pre-wrap; font: 12px ui-monospace, monospace; background: #f4f4f4; padding: .75rem; border-radius: 6px; }
+    </style>
+  </head>
+  <body>
+    <h1>Live try-on demo</h1>
+    <p>Garment image URL, or pick a file (a product photo on a plain background works best):</p>
+    <input id="image" placeholder="https://…/product.jpg" />
+    <input id="file" type="file" accept="image/*" />
+    <div>
+      <button id="start">Prepare + start</button>
+      <button id="switch" disabled>Switch to URL above</button>
+      <button id="stop" disabled>Stop</button>
+      <span id="status"></span>
+    </div>
+    <p><video id="video" autoplay playsinline muted></video></p>
+    <div id="log"></div>
+
+    <script type="module">
+      import { connectLiveTryOn, openCamera } from "./vendor/tryiton-live.js";
+
+      const $ = (id) => document.getElementById(id);
+      const log = (...a) => ($("log").textContent += a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ") + "\n");
+      const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
+      let live = null;
+
+      const fileAsDataUri = (file) =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        });
+
+      const prepare = async () => {
+        const file = $("file").files[0];
+        const image = file ? await fileAsDataUri(file) : $("image").value.trim();
+        const t = performance.now();
+        const r = await post("/demo/garments", { image });
+        if (!r.ok) throw new Error(r.error?.message);
+        log(`garment ${r.garment.id} (${r.garment.category}/${r.garment.subcategory}) in ${Math.round(performance.now() - t)} ms`);
+        return r.garment.id;
+      };
+
+      $("start").onclick = async () => {
+        let camera = null;
+        try {
+          // Camera first: the permission prompt must not run while a started session holds a credit.
+          camera = await openCamera();
+          const t0 = performance.now();
+          const garmentId = await prepare();
+          const start = await post("/demo/sessions", { garmentId });
+          if (!start.ok) throw new Error(start.error?.message);
+          log(`session ${start.session.id} started in ${Math.round(performance.now() - t0)} ms, ${start.secondsLeft}s available`);
+          const t1 = performance.now();
+          live = await connectLiveTryOn(start, {
+            camera,
+            apiBaseUrl: "__API_BASE__",
+            debug: new URLSearchParams(location.search).has("debug"),
+            onStream: (stream) => {
+              $("video").srcObject = stream;
+              log(`try-on video: ${stream.getTracks().map((t) => t.kind).join(", ")} after ${Math.round(performance.now() - t1)} ms`);
+            },
+            onStatusChange: (s) => ($("status").textContent = s),
+            onSecondsLeft: (s) => ($("status").textContent = `live · ${s}s left`),
+            onEnd: (r) => {
+              log("ended:", { reason: r.reason, seconds: r.session?.seconds, credits: r.session?.creditsCharged, error: r.error?.message });
+              $("switch").disabled = $("stop").disabled = true;
+              camera?.getTracks().forEach((t) => t.stop());
+            },
+          });
+          log(`live: first edited frame ${Math.round(performance.now() - t1)} ms after connect (${Math.round(performance.now() - t0)} ms total)`);
+          $("switch").disabled = $("stop").disabled = false;
+        } catch (err) {
+          camera?.getTracks().forEach((t) => t.stop());
+          log("error:", err.code || "", err.message);
+        }
+      };
+
+      $("switch").onclick = async () => {
+        try {
+          const id = await prepare();
+          const t = performance.now();
+          await live.switchGarment(id);
+          log(`switched in ${Math.round(performance.now() - t)} ms`);
+        } catch (err) {
+          log("error:", err.code || "", err.message);
+        }
+      };
+
+      $("stop").onclick = () => live?.end();
+    </script>
+  </body>
+</html>
