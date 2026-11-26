@@ -11,6 +11,13 @@
     "sdk"
   ],
   "homepage": "https://docs.tryiton.now",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tryiton-now/tryiton-live.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tryiton-now/tryiton-live/issues"
+  },
   "license": "MIT",
   "author": "TryItOn",
   "type": "module",
