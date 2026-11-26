@@ -38,6 +38,35 @@ export const DEFAULT_CONNECT_TIMEOUT_MS = 20 * 1000;
 
 const toLucyState = (input: GarmentInput) => ({ prompt: { text: input.prompt, enhance: input.enhancePrompt }, image: input.referenceImage });
 
+/**
+ * Call `onFlowing` once `track` carries media. WebRTC hands the remote track over before any frame arrives;
+ * browsers keep it `muted` until media flows, then fire "unmute". Returns a cancel function.
+ * (Same logic as the TryItOn apps' shared/liveMedia.js.)
+ */
+export function onVideoFlowing(track: MediaStreamTrack | undefined, onFlowing: () => void): () => void {
+  if (!track)
+    return () => {};
+  if (track.muted !== true) {
+    onFlowing();
+    return () => {};
+  }
+
+  let done = false;
+  const handler = () => {
+    if (done)
+      return;
+    stop();
+    onFlowing();
+  };
+  const stop = () => {
+    done = true;
+    track.removeEventListener?.("unmute", handler);
+  };
+  track.addEventListener?.("unmute", handler);
+
+  return stop;
+}
+
 /** Default connector: Decart Lucy VTON realtime via @decartai/sdk. */
 export const connectDecart: MediaConnector = (opts) => {
   if (opts.provider !== "decart")
@@ -52,6 +81,8 @@ export const connectDecart: MediaConnector = (opts) => {
   let sessionUp = false;
   let hasVideo = false;
   let reported = false;
+  // Cancels the wait for the current track's first frame.
+  let cancelFlowWait = () => {};
 
   const reportIfFlowing = () => {
     if (closed || reported || !sessionUp || !hasVideo)
@@ -66,6 +97,7 @@ export const connectDecart: MediaConnector = (opts) => {
       return;
     closed = true;
     clearTimeout(noVideoTimer);
+    cancelFlowWait();
     try {
       rt?.disconnect();
     } catch {
@@ -82,6 +114,12 @@ export const connectDecart: MediaConnector = (opts) => {
     if (state === "connected" || state === "generating") {
       sessionUp = true;
       reportIfFlowing();
+    }
+    // A re-dial before billing started brings a new track: wait for that one's frames, not the dead attempt's.
+    else if (state === "reconnecting" && !reported) {
+      sessionUp = false;
+      hasVideo = false;
+      cancelFlowWait();
     }
     // "reconnecting" is retried by the SDK; "disconnected" is final.
     else if (state === "disconnected" && rt)
@@ -109,9 +147,14 @@ export const connectDecart: MediaConnector = (opts) => {
         if (closed)
           return;
         opts.onRemoteStream(stream);
-        if (stream.getVideoTracks().length > 0) {
-          hasVideo = true;
-          reportIfFlowing();
+        // Billing starts on the first edited frame, not when the track appears (it can arrive empty).
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          cancelFlowWait();
+          cancelFlowWait = onVideoFlowing(track, () => {
+            hasVideo = true;
+            reportIfFlowing();
+          });
         }
       },
       onConnectionChange: onState,

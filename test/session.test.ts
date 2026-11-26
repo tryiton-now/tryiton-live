@@ -77,6 +77,32 @@ describe("connectLiveTryOn", () => {
     expect(live.secondsLeft).toBe(18);
   });
 
+  it("names the next tick in each heartbeat, following the server's count after a retry", async () => {
+    const seqs: number[] = [];
+    let attempt = 0;
+    const { api } = fakeApi({
+      heartbeat: vi.fn(async (_ms: number | null, seq: number) => {
+        seqs.push(seq);
+        attempt++;
+        // The 2nd request times out client-side although the server settled tick 2.
+        if (attempt === 2)
+          throw new Error("timeout");
+        return { stop: false, secondsLeft: 18, ticks: attempt === 3 ? 2 : seq };
+      }),
+    });
+    const pending = connect(api);
+    await vi.waitFor(() => expect(media).toBeDefined());
+    media!.opts.onConnected();
+    await pending;
+
+    await vi.advanceTimersByTimeAsync(2000); // tick 1
+    await vi.advanceTimersByTimeAsync(2000); // tick 2 fails
+    await vi.advanceTimersByTimeAsync(2000); // retry of tick 2: server says already 2 settled
+    await vi.advanceTimersByTimeAsync(2000); // tick 3
+
+    expect(seqs.slice(0, 4)).toEqual([1, 2, 2, 3]);
+  });
+
   it("ends without calling /end when a heartbeat says stop", async () => {
     const summary = { id: "s1", status: "ended" as const, endReason: "out_of_credits", seconds: 6, creditsCharged: 3, endUserId: null };
     const { api, calls } = fakeApi({ heartbeat: vi.fn(async () => ({ stop: true, reason: "out_of_credits", session: summary })) });
@@ -198,11 +224,11 @@ describe("createLiveApi", () => {
     const fetchFn = vi.fn(async () => new Response(JSON.stringify({ ok: false, error: { name: "NotFound", message: "Session not found." } }), { status: 404 }));
     const api = createLiveApi({ baseUrl: "https://api.test/api/v1/", sessionId: "s1", secret: "sec", fetchFn });
 
-    await expect(api.heartbeat(900)).rejects.toMatchObject({ code: "http_error", status: 404, apiName: "NotFound" });
+    await expect(api.heartbeat(900, 3)).rejects.toMatchObject({ code: "http_error", status: 404, apiName: "NotFound" });
 
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://api.test/api/v1/live/sessions/s1/heartbeat");
-    expect(JSON.parse(init.body as string)).toEqual({ connect_ms: 900, secret: "sec" });
+    expect(JSON.parse(init.body as string)).toEqual({ seq: 3, connect_ms: 900, secret: "sec" });
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 
