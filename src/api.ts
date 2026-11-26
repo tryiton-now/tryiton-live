@@ -10,6 +10,8 @@ export interface HeartbeatResult {
   stop: boolean;
   reason?: string;
   secondsLeft?: number;
+  /** Ticks the server has settled so far; the next heartbeat settles `ticks + 1`. */
+  ticks?: number;
   session?: LiveSessionSummary;
 }
 
@@ -21,7 +23,8 @@ export interface EndBody {
 }
 
 export interface LiveApi {
-  heartbeat(connectMs: number | null): Promise<HeartbeatResult>;
+  /** `seq` = the 1-based tick being settled; a repeat (retry) is answered without a second charge. */
+  heartbeat(connectMs: number | null, seq: number): Promise<HeartbeatResult>;
   switchGarment(garmentId: string): Promise<LiveGarment>;
   end(body: EndBody): Promise<LiveSessionSummary | null>;
   /** Fire-and-forget end for a dying page: a CORS-simple request (no preflight) with the secret in the URL. */
@@ -60,9 +63,12 @@ export function createLiveApi({
   };
 
   return {
-    heartbeat: async (connectMs) => {
-      const { stop, reason, secondsLeft, session } = await post<HeartbeatResult>("/heartbeat", connectMs == null ? {} : { connect_ms: connectMs });
-      return { stop, reason, secondsLeft, session };
+    heartbeat: async (connectMs, seq) => {
+      const { stop, reason, secondsLeft, ticks, session } = await post<HeartbeatResult>("/heartbeat", {
+        seq,
+        ...(connectMs != null && { connect_ms: connectMs }),
+      });
+      return { stop, reason, secondsLeft, ticks, session };
     },
     switchGarment: async (garmentId) => (await post<{ garment: LiveGarment }>(`/garments/${encodeURIComponent(garmentId)}`, {})).garment,
     end: async (body) => (await post<{ session: LiveSessionSummary }>("/end", body)).session || null,

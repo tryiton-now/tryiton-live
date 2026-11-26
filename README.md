@@ -65,7 +65,9 @@ nothing.
 ### Billing and ending
 
 - Billed per `secondsPerCredit` (2 s per credit by default) from the first try-on frame, not from connect. The SDK
-  sends the billing heartbeat for you.
+  sends the billing heartbeat for you, numbered (`seq`) so a retry is never charged twice. Ending charges the credit
+  held at start, even when no video arrived; the API docs explain the
+  [billing rules](https://docs.tryiton.now/docs/api-reference/live-tryon#billing).
 - The server can end a stream at any heartbeat. `onEnd` gets the reason: `time_limit`, `out_of_credits`,
   `superseded`, …
 - If two heartbeats in a row fail, the stream ends with `heartbeat_failed`. It never runs unbilled.

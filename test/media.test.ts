@@ -17,8 +17,26 @@ vi.mock("@decartai/sdk", () => ({
 
 const { connectDecart } = await import("../src/media");
 
-const stream = (kinds: string[]) =>
-  ({ getTracks: () => kinds.map((kind) => ({ kind })), getVideoTracks: () => kinds.filter((k) => k === "video").map((kind) => ({ kind })) }) as unknown as MediaStream;
+// A remote video track that is `muted` until its first frame arrives, like a browser's.
+const mutedTrack = () => {
+  const listeners = new Set<() => void>();
+  return {
+    kind: "video",
+    muted: true,
+    addEventListener: (_t: string, fn: () => void) => listeners.add(fn),
+    removeEventListener: (_t: string, fn: () => void) => listeners.delete(fn),
+    firstFrame() {
+      this.muted = false;
+      [...listeners].forEach((fn) => fn());
+    },
+  };
+};
+
+const stream = (kinds: string[], video: any = null) =>
+  ({
+    getTracks: () => kinds.map((kind) => ({ kind })),
+    getVideoTracks: () => (video ? [video] : kinds.filter((k) => k === "video").map((kind) => ({ kind }))),
+  }) as unknown as MediaStream;
 
 const open = (extra = {}) => {
   const calls = { connected: 0, failures: [] as string[] };
@@ -66,6 +84,37 @@ describe("connectDecart", () => {
     connectOpts.onConnectionChange("generating");
     connectOpts.onConnectionChange("connected");
     expect(b.connected).toBe(1);
+  });
+
+  it("waits for the first frame of a track that arrives empty before reporting connected", async () => {
+    const calls = open();
+    await vi.waitFor(() => expect(connectOpts).toBeDefined());
+    const track = mutedTrack();
+
+    connectOpts.onConnectionChange("connected");
+    connectOpts.onRemoteStream(stream(["video"], track));
+    expect(calls.connected).toBe(0);
+
+    track.firstFrame();
+    expect(calls.connected).toBe(1);
+  });
+
+  it("a re-dial before the first frame ignores the dead attempt's track", async () => {
+    const calls = open();
+    await vi.waitFor(() => expect(connectOpts).toBeDefined());
+    const dead = mutedTrack();
+
+    connectOpts.onConnectionChange("connected");
+    connectOpts.onRemoteStream(stream(["video"], dead));
+    connectOpts.onConnectionChange("reconnecting");
+    dead.firstFrame();
+    expect(calls.connected).toBe(0);
+
+    const fresh = mutedTrack();
+    connectOpts.onRemoteStream(stream(["video"], fresh));
+    connectOpts.onConnectionChange("connected");
+    fresh.firstFrame();
+    expect(calls.connected).toBe(1);
   });
 
   it("ignores an audio-only remote stream", async () => {

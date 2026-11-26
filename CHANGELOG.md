@@ -14,9 +14,11 @@ First release: the browser side of TryItOn live (real-time webcam) try-on.
 - `openCamera()`, so you can get camera permission before your server starts a billed session.
 - `LiveTryOnSession`: `switchGarment(id)` swaps garments on the running stream without reconnecting, and `end()` is
   idempotent.
-- Billing heartbeats that start at the first try-on frame and run on a fixed cadence. Two failed heartbeats end the
-  stream, so it never runs unbilled. Closing the page sends a keepalive end request.
-- `connectTimeoutMs` (default 20 s): a stream that never produces video fails without being billed.
+- Billing heartbeats that start at the first try-on frame (the first decoded frame, not just a video track) and run
+  on a fixed cadence. Each names the tick it settles (`seq`), so a retried heartbeat is never charged twice. Two
+  failed heartbeats end the stream, so it never runs unbilled. Closing the page sends a keepalive end request.
+- `connectTimeoutMs` (default 20 s): a stream that never produces video fails and ends the session. Only the credit
+  held at start is charged.
 - `debug: true` logs connection states, provider diagnostics and transport stats.
 - `scripts/copy-media-worker.mjs` for bundlers that don't emit `new URL(…, import.meta.url)` workers, such as
   esbuild.

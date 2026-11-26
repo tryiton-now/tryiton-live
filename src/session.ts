@@ -67,6 +67,8 @@ export class LiveTryOnSession {
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
   private countdownTimer: ReturnType<typeof setInterval> | null = null;
   private heartbeatFailures = 0;
+  // Ticks the server has settled; each heartbeat names the next one (seq), so a retry can't be charged twice.
+  private settledTicks = 0;
   private ended: Promise<LiveEndResult> | null = null;
   private readonly onPageHide = () => this.unload();
 
@@ -201,7 +203,7 @@ export class LiveTryOnSession {
     if (this.isEnded)
       return;
     try {
-      const result = await this.deps.api.heartbeat(this.connectMs);
+      const result = await this.deps.api.heartbeat(this.connectMs, this.settledTicks + 1);
       if (this.isEnded)
         return;
       this.heartbeatFailures = 0;
@@ -211,8 +213,13 @@ export class LiveTryOnSession {
       }
       if (typeof result.secondsLeft === "number")
         this.setSecondsLeft(result.secondsLeft);
+      // The server's count wins: after a retry whose first attempt did land, the next heartbeat names the next tick.
+      if (typeof result.ticks === "number")
+        this.settledTicks = result.ticks;
+      else
+        this.settledTicks += 1; // a server that doesn't report ticks ignores seq anyway
       // Fixed cadence from connect (not from this response), so request time doesn't stretch each tick. Half a
-      // tick minimum clears the server's "too early" gate when catching up after a retry.
+      // tick minimum clears the server's burst guard when catching up after a retry.
       this.nextTickAt += this.secondsPerCredit * 1000;
       this.heartbeatTimer = setTimeout(() => void this.heartbeat(), Math.max(this.secondsPerCredit * 500, this.nextTickAt - this.deps.now()));
     } catch (err) {
@@ -224,7 +231,7 @@ export class LiveTryOnSession {
         await this.finish("error", { error: new TryItOnLiveError("heartbeat_failed", `Billing heartbeat failed: ${message}`) });
         return;
       }
-      // A retry the server already counted is answered "too early": no double charge.
+      // A retry of a tick the server already counted is answered without a charge (same seq).
       this.heartbeatTimer = setTimeout(() => void this.heartbeat(), HEARTBEAT_RETRY_MS);
     }
   }
