@@ -1,6 +1,8 @@
 export { connectLiveTryOn, openCamera, LiveTryOnSession } from "./session";
 export { TryItOnLiveError } from "./errors";
 export { showAiDisclosure, DEFAULT_AI_DISCLOSURE_LABEL } from "./disclosure";
+export { attachStream } from "./video";
+export type { AttachStreamOptions } from "./video";
 export type { AiDisclosureOptions, AiDisclosurePosition } from "./disclosure";
 export type { LiveErrorCode } from "./errors";
 export type {

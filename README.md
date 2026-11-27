@@ -38,7 +38,7 @@ const start = await post("/live/sessions", {
 ## Browser
 
 ```js
-import { connectLiveTryOn, openCamera } from "tryiton-live";
+import { attachStream, connectLiveTryOn, openCamera } from "tryiton-live";
 
 // 1. Camera first: a session holds a credit from the moment it starts, and the permission prompt can take a while.
 const camera = await openCamera();
@@ -48,7 +48,7 @@ const start = await fetch("/my-api/live-session", { method: "POST" }).then((r) =
 
 const live = await connectLiveTryOn(start, {
   camera,
-  onStream: (stream) => (video.srcObject = stream),   // <video autoplay playsinline muted>
+  onStream: (stream) => attachStream(video, stream),  // plays it, iOS included (see below)
   disclosure: videoContainer,                        // "AI-modified video" label while live (see below)
   onSecondsLeft: (s) => (timer.textContent = `${s}s`),
   onEnd: ({ reason, session }) => console.log(reason, session?.creditsCharged),
@@ -82,13 +82,25 @@ element that holds your `<video>` while the try-on is live, and removes it when 
 
 ```js
 connectLiveTryOn(start, {
-  onStream: (s) => (video.srcObject = s),
+  onStream: (s) => attachStream(video, s),
   disclosure: { container: videoContainer, label: "KI-veränderte Vorschau", position: "bottom-right" },
 });
 ```
 
 `showAiDisclosure(container, { label, position, inset })` shows the same label anywhere in your UI and returns a
 function that removes it. If you show your own disclosure instead, keep it visible on the video while it plays.
+
+### iOS Safari
+
+- **Video:** show the stream with `attachStream(video, stream)`. It sets `muted` and `playsinline`, calls `play()`
+  (iOS ignores `autoplay` in Low Power Mode) and resumes playback when the page is shown again.
+- **Hidden page:** the session ends with reason `hidden` when the page is hidden. iOS pauses the camera and the stream
+  when the shopper switches apps, and `pagehide` doesn't fire then. Start a new session when they come back.
+  `endWhenHidden: false` turns this off.
+- **Camera:** if the `camera` you pass has an ended track (iOS stopped it in the background), the session opens a fresh
+  one. Call `openCamera()` again before each session to keep your own preview working.
+- **Start from a tap.** Camera access is unreliable in in-app browsers (Instagram, TikTok, Facebook): check
+  `navigator.mediaDevices?.getUserMedia` and suggest opening the page in Safari if it's missing.
 
 ### Bundlers
 
