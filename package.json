@@ -1,6 +1,6 @@
 {
   "name": "tryiton-live",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Browser SDK for TryItOn live (real-time webcam) virtual try-on.",
   "keywords": [
     "tryiton",
