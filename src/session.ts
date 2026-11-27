@@ -24,6 +24,8 @@ export interface SessionDeps {
   getCamera: () => Promise<MediaStream>;
   /** Where to listen for `pagehide`; null outside a browser. */
   pageEvents: Pick<Window, "addEventListener" | "removeEventListener"> | null;
+  /** The document, for `visibilitychange` (ends the stream when the page is hidden); null outside a browser. */
+  visibility?: Pick<Document, "addEventListener" | "removeEventListener" | "visibilityState"> | null;
   now: () => number;
 }
 
@@ -43,6 +45,9 @@ export const openCamera = async (): Promise<MediaStream> => {
     throw new TryItOnLiveError(denied ? "camera_denied" : "camera_unavailable", err?.message || "Couldn't open the camera.");
   }
 };
+
+// iOS ends the camera while the page is hidden and doesn't restart it: a stream whose video track ended sends black.
+const hasLiveVideo = (stream: MediaStream | undefined) => stream?.getVideoTracks?.()[0]?.readyState === "live";
 
 const assertStart = (start: LiveStartResponse) => {
   if (!start?.session?.id || !start.clientSecret || !start.connection?.token)
@@ -73,6 +78,12 @@ export class LiveTryOnSession {
   private settledTicks = 0;
   private ended: Promise<LiveEndResult> | null = null;
   private readonly onPageHide = () => this.unload();
+  // A hidden page (another app, a locked phone) can't show the stream, and iOS pauses the camera: end it, unbilled
+  // from here, instead of leaving it open until the server notices. `pagehide` alone misses an app switch on iOS.
+  private readonly onVisibility = () => {
+    if (this.deps.visibility?.visibilityState === "hidden" && !this.isEnded)
+      void this.finish("hidden");
+  };
 
   /** Use connectLiveTryOn(); the constructor is public for tests and advanced wiring only. */
   // A getter on purpose: callbacks flip `status` between awaits, so it must be re-read, not narrowed.
@@ -98,11 +109,15 @@ export class LiveTryOnSession {
    */
   async open(): Promise<this> {
     this.deps.pageEvents?.addEventListener("pagehide", this.onPageHide);
+    if (this.opts.endWhenHidden !== false)
+      this.deps.visibility?.addEventListener("visibilitychange", this.onVisibility);
 
     let input: GarmentInput;
     try {
       input = await this.firstGarmentInput();
-      if (this.opts.camera)
+      // A camera whose video track already ended (iOS stops it while the page is hidden) would stream black: open a
+      // fresh one instead, which this session then owns and stops.
+      if (this.opts.camera && hasLiveVideo(this.opts.camera))
         this.camera = this.opts.camera;
       else {
         this.camera = await this.deps.getCamera();
@@ -262,6 +277,7 @@ export class LiveTryOnSession {
     if (this.ownsCamera)
       this.camera?.getTracks().forEach((t) => t.stop());
     this.deps.pageEvents?.removeEventListener("pagehide", this.onPageHide);
+    this.deps.visibility?.removeEventListener("visibilitychange", this.onVisibility);
   }
 
   // Idempotent: tears down locally, then tells the server unless the server ended it.
@@ -332,6 +348,7 @@ export function connectLiveTryOn(
     connectMedia: deps.connectMedia || connectDecart,
     getCamera: deps.getCamera || openCamera,
     pageEvents: deps.pageEvents !== undefined ? deps.pageEvents : typeof window !== "undefined" ? window : null,
+    visibility: deps.visibility !== undefined ? deps.visibility : typeof document !== "undefined" ? document : null,
     now: deps.now || (() => Date.now()),
   });
 

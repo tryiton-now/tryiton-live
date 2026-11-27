@@ -27,7 +27,7 @@
     <div id="log"></div>
 
     <script type="module">
-      import { connectLiveTryOn, openCamera } from "./vendor/tryiton-live.js";
+      import { attachStream, connectLiveTryOn, openCamera } from "./vendor/tryiton-live.js";
 
       const $ = (id) => document.getElementById(id);
       const log = (...a) => ($("log").textContent += a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ") + "\n");
@@ -68,7 +68,7 @@
             apiBaseUrl: "__API_BASE__",
             debug: new URLSearchParams(location.search).has("debug"),
             onStream: (stream) => {
-              $("video").srcObject = stream;
+              attachStream($("video"), stream);
               log(`try-on video: ${stream.getTracks().map((t) => t.kind).join(", ")} after ${Math.round(performance.now() - t1)} ms`);
             },
             onStatusChange: (s) => ($("status").textContent = s),

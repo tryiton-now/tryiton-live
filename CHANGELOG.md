@@ -11,6 +11,18 @@ All notable changes to `tryiton-live` are documented here. The format follows
   an "AI-modified video" label over your video container while edited video is live and removes it when the session
   ends. `showAiDisclosure(container, { label, position, inset })` does the same for your own UI, and returns a
   function that removes it.
+- `attachStream(video, stream)`: plays the try-on stream in your `<video>` and keeps it playing. It sets `muted` and
+  `playsinline`, calls `play()` itself (iOS ignores `autoplay` in Low Power Mode) and resumes playback when the page
+  is shown again (iOS pauses media in the background). Returns a function that stops watching the page.
+- `endWhenHidden` option (default `true`).
+
+### Changed
+
+- The session now ends with reason `hidden` when the page is hidden (another tab, another app, a locked phone). A
+  hidden page can't show the video and iOS pauses the camera, so the stream would only run, and bill, unseen.
+  `pagehide` alone misses an app switch on iOS. Pass `endWhenHidden: false` to keep the old behavior.
+- A `camera` whose video track already ended (iOS stops the camera while the page is hidden) is no longer used: the
+  session opens a fresh camera instead, so you don't stream black frames. The session owns and stops that camera.
 
 ## [0.1.0] - Unreleased
 

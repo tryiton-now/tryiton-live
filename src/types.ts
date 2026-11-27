@@ -86,6 +86,11 @@ export interface ConnectOptions {
    * your own disclosure (see `showAiDisclosure`).
    */
   disclosure?: HTMLElement | (AiDisclosureOptions & { container: HTMLElement });
+  /**
+   * End the session (reason `hidden`) when the page is hidden: another tab, another app, a locked phone. Default true.
+   * A hidden page can't show the video, and iOS pauses the camera, so the stream would only run (and bill) unseen.
+   */
+  endWhenHidden?: boolean;
   onStatusChange?: (status: LiveStatus) => void;
   /** Seconds the stream may still run, updated every second while live and on every heartbeat. */
   onSecondsLeft?: (seconds: number) => void;
