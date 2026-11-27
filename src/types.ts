@@ -1,3 +1,5 @@
+import type { AiDisclosureOptions } from "./disclosure";
+
 /** What the stream needs for one garment (from the start response or a switch). */
 export interface GarmentInput {
   prompt: string;
@@ -78,6 +80,12 @@ export interface ConnectOptions {
   garmentId?: string;
   /** The try-on video. Attach it to a `<video autoplay playsinline muted>`. */
   onStream?: (stream: MediaStream) => void;
+  /**
+   * Show an "AI-modified video" label over the try-on video while it's live (EU AI Act Art. 50 disclosure). Pass the
+   * element that contains your `<video>`, or `{ container, label, position }`. Recommended: if you leave it out, show
+   * your own disclosure (see `showAiDisclosure`).
+   */
+  disclosure?: HTMLElement | (AiDisclosureOptions & { container: HTMLElement });
   onStatusChange?: (status: LiveStatus) => void;
   /** Seconds the stream may still run, updated every second while live and on every heartbeat. */
   onSecondsLeft?: (seconds: number) => void;

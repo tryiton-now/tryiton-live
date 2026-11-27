@@ -49,6 +49,7 @@ const start = await fetch("/my-api/live-session", { method: "POST" }).then((r) =
 const live = await connectLiveTryOn(start, {
   camera,
   onStream: (stream) => (video.srcObject = stream),   // <video autoplay playsinline muted>
+  disclosure: videoContainer,                        // "AI-modified video" label while live (see below)
   onSecondsLeft: (s) => (timer.textContent = `${s}s`),
   onEnd: ({ reason, session }) => console.log(reason, session?.creditsCharged),
 });
@@ -72,6 +73,22 @@ nothing.
   `superseded`, …
 - If two heartbeats in a row fail, the stream ends with `heartbeat_failed`. It never runs unbilled.
 - Closing the tab ends the session with a keepalive request.
+
+### AI disclosure
+
+The try-on video shows a real person in AI-edited clothes. Under the EU AI Act (Art. 50) you have to tell viewers
+the video is AI-modified. Pass `disclosure` and the SDK shows a small frosted "AI-modified video" label over the
+element that holds your `<video>` while the try-on is live, and removes it when the session ends:
+
+```js
+connectLiveTryOn(start, {
+  onStream: (s) => (video.srcObject = s),
+  disclosure: { container: videoContainer, label: "KI-veränderte Vorschau", position: "bottom-right" },
+});
+```
+
+`showAiDisclosure(container, { label, position, inset })` shows the same label anywhere in your UI and returns a
+function that removes it. If you show your own disclosure instead, keep it visible on the video while it plays.
 
 ### Bundlers
 

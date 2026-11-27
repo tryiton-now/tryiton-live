@@ -1,5 +1,6 @@
 import { createLiveApi, DEFAULT_API_BASE_URL, type LiveApi } from "./api";
 import { TryItOnLiveError } from "./errors";
+import { showAiDisclosure } from "./disclosure";
 import { connectDecart, type MediaConnection, type MediaConnector } from "./media";
 import type { ConnectOptions, GarmentInput, LiveEndReason, LiveEndResult, LiveGarment, LiveSessionSummary, LiveStartResponse, LiveStatus } from "./types";
 
@@ -61,6 +62,7 @@ export class LiveTryOnSession {
   private camera: MediaStream | null = null;
   private ownsCamera = false;
   private media: MediaConnection | null = null;
+  private hideDisclosure: (() => void) | null = null;
   private connected = false;
   private connectMs: number | null = null;
   private nextTickAt = 0;
@@ -187,12 +189,22 @@ export class LiveTryOnSession {
     this.opts.onSecondsLeft?.(this.secondsLeft);
   }
 
+  // The AI-disclosure label is up exactly while edited video is live.
+  private showDisclosure() {
+    const d = this.opts.disclosure;
+    if (!d || this.hideDisclosure)
+      return;
+    const { container, ...opts } = "container" in d ? d : { container: d };
+    this.hideDisclosure = showAiDisclosure(container, opts);
+  }
+
   private onConnected() {
     if (this.connected || this.isEnded)
       return;
     this.connected = true;
     this.connectMs = this.deps.now() - this.startedAt;
     this.setStatus("live");
+    this.showDisclosure();
     // Billing clock starts when media actually flows.
     this.nextTickAt = this.deps.now() + this.secondsPerCredit * 1000;
     this.heartbeatTimer = setTimeout(() => void this.heartbeat(), this.secondsPerCredit * 1000);
@@ -245,6 +257,8 @@ export class LiveTryOnSession {
     this.countdownTimer = null;
     this.media?.close();
     this.media = null;
+    this.hideDisclosure?.();
+    this.hideDisclosure = null;
     if (this.ownsCamera)
       this.camera?.getTracks().forEach((t) => t.stop());
     this.deps.pageEvents?.removeEventListener("pagehide", this.onPageHide);
